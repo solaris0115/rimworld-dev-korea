@@ -5,10 +5,10 @@
 ***
 
 
-A framework for the creation of new alien races in Rimworld
+림월드에서 새로운 외계 종족을 만들기 위한 프레임워크
 ---
 
-If you ever thought that the racial diversity in rimworld is... not that diverse and you want to change that, you came to the right place. This framework allows to easily add new humanoid races without any C# knowledge, purely in xml.
+림월드에서 종족 다양성이... 그리 다양하지 않다고 느껴 바꾸고 싶었다면, 잘 찾아오셨습니다. 이 프레임워크는 C# 지식 없이도 순수 XML만으로 새로운 인간형 종족을 손쉽게 추가할 수 있습니다.
 
 ### Feature Overview
 
