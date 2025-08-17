@@ -20,7 +20,7 @@ jobs:
           git config --global user.name "wiki-bot"
           git config --global user.email "bot@example.com"
 
-      # 1) 메인 리포 체크아웃 (GITHUB_TOKEN 주입 비활성화)
+      # 1) 메인 리포 체크아웃 (GITHUB_TOKEN 자격증명 주입 비활성화)
       - name: checkout main repo (source) without credentials
         uses: actions/checkout@v4
         with:
@@ -39,26 +39,31 @@ jobs:
             echo "dir=." >> "$GITHUB_OUTPUT"
           fi
 
-      # 3) rsync 규칙 생성 (모든 파일 포함, 작업용 폴더/파일 명시 제외)
-      - name: build rsync rules
+      # 3) rsync 규칙: md/위키 기본 파일/이미지 만 포함, 작업 폴더 명시 제외
+      - name: build rsync rules (wiki md + images only)
         run: |
           printf "%s\n" \
             "- .git/***" \
             "- .github/***" \
-            "- .git" \
             "- node_modules/***" \
             "- build/***" \
             "- dist/***" \
             "- out/***" \
-            "- target.wiki/***" \
+            "- .wiki/***" \
             "- _src/***" \
             "- rsync.rules" \
             "+ */" \
-            "+ *" \
+            "+ *.md" \
+            "+ _Sidebar.md" \
+            "+ _Footer.md" \
+            "+ _Header.md" \
+            "+ _*.*" \
+            "+ _images/***" \
+            "+ *.png" "+ *.jpg" "+ *.jpeg" "+ *.gif" "+ *.svg" "+ *.webp" "+ *.bmp" "+ *.ico" \
             "- *" > rsync.rules
           cat rsync.rules
 
-      # 4) 소스 스냅샷을 먼저 만든다 (여기서는 아직 target.wiki 가 없음)
+      # 4) 소스 스냅샷 생성 (아직 .wiki 없음)
       - name: snapshot source to _src
         run: |
           rm -rf _src && mkdir _src
@@ -76,67 +81,83 @@ jobs:
             fi
           done
 
-      # 6) 이제 위키를 클론(최신으로 맞추고 시작) — 스냅샷 이후로 순서를 이동
-      - name: clone target wiki (PAT) and hard reset to latest
+      # 6) 위키 저장소를 서브폴더 .wiki/ 에 클론 (항상 최신 기준으로 작업 시작)
+      - name: clone wiki repo into .wiki
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # Fine-grained PAT (Contents: Read/Write)
         run: |
+          rm -rf .wiki
           TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           echo "Cloning target: $TGT_URL"
-          git clone "$TGT_URL" target.wiki
-          cd target.wiki
+          git clone "$TGT_URL" .wiki
+          cd .wiki
           git fetch origin master || true
           git checkout -B master || git checkout master
           git reset --hard origin/master || true
 
-      # 7) 위키 워크트리에 전체 동기화 (삭제 포함)
-      - name: sync snapshot to wiki worktree
+      # 7) 스냅샷을 위키 워크트리(.wiki/)에 적용 (삭제 포함)
+      - name: sync snapshot to .wiki (full, delete)
         run: |
-          rsync -av --delete --prune-empty-dirs _src/ target.wiki/
+          rsync -av --delete --prune-empty-dirs _src/ .wiki/
 
       # 8) PAT 원격 보장 및 상태 출력
       - name: ensure PAT remote and show status
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cd target.wiki
+          cd .wiki
           git config --global --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin "https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           git remote -v
           git status --porcelain || true
 
-      # 9) non-ff 대비: push 전에 원격 최신 → 스냅샷 재적용 → 커밋 → 푸시 루프 (rebase 사용 안 함)
-      - name: push with non-ff recovery (rebuild mode)
+      # 9) 커밋 생성(있을 때만)
+      - name: commit if changes
+        id: commit
+        run: |
+          cd .wiki
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+            echo "committed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "committed=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 10) non-ff 자동 복구: 원격 최신으로 hard reset → 스냅샷 재적용 → 재커밋 → 재푸시
+      - name: push wiki (non-ff recovery loop)
+        if: steps.commit.outputs.committed == 'yes'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -e
-          cd target.wiki
-          commit_and_push() {
-            if [ -n "$(git status --porcelain)" ]; then
-              git add .
-              git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          cd .wiki
+
+          attempt_push() {
+            echo "Attempting push..."
+            if git push origin master; then
+              echo "Push OK"
+              return 0
             fi
-            git push origin master && return 0
-            return 1
-          }
 
-          # 1차 시도
-          commit_and_push && exit 0
-
-          # non-ff 발생 시: 원격 최신으로 맞추고 스냅샷을 다시 덮어서 커밋 재구성
-          for i in 1 2 3; do
-            echo "Non-ff detected. Recovery attempt $i..."
+            echo "Non-fast-forward. Refetch & rebuild commit..."
             git fetch origin master || true
             git reset --hard origin/master
+
+            # 스냅샷 재적용
             rsync -av --delete --prune-empty-dirs ../_src/ ./
-            # 변경 있으면 커밋 후 푸시 재시도
+
+            # 변경 있으면 재커밋
             if [ -n "$(git status --porcelain)" ]; then
               git add .
-              git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ)) [rebuild $i]"
+              git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ)) [rebuild]"
+            else
+              echo "No diff after rebuild; nothing to push."
+              return 0
             fi
-            git push origin master && exit 0
-          done
 
-          echo "Final: force-with-lease"
-          git push --force-with-lease origin master
+            git push origin master
+          }
+
+          attempt_push || attempt_push || attempt_push
+          echo "Done."
