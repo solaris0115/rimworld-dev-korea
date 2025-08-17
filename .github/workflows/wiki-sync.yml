@@ -101,4 +101,26 @@ jobs:
           git config --global --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin "https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           git remote -v
-          git sta
+          git status --porcelain || true
+
+      # 변경 있으면 커밋
+      - name: commit if changes
+        id: commit
+        run: |
+          cd target.wiki
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+            echo "committed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "committed=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 푸시 (race 대비 1회 rebase 후 재시도)
+      - name: push wiki
+        if: steps.commit.outputs.committed == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          cd target.wiki
+          git push origin master || (git pull --rebase origin master && git push origin master)
