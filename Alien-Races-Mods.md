@@ -9,7 +9,7 @@
 
 * Ludeon / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=1204079337)
 
-> A constructable race of humanlike robots.
+> 인간형 로봇으로 제작 가능한 종족.
 
 
 ***
@@ -21,7 +21,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=1198933031)
 
-> Have you always wanted to play as Caesar, leading your colony of Apes to a better life?
+> 언제나 시저가 되어 원숭이 식민지를 이끌어 더 나은 삶을 살고 싶었나요?
 
 ***
 
@@ -33,8 +33,8 @@
 
 * [Ludeon](https://ludeon.com/forums/index.php?topic=31076.0) / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=881864390) 
 
-> Humanoid-sized bees. 
-> A17 only. 
+> 인간 크기의 벌.
+> A17 전용.
 
 ***
 
@@ -45,7 +45,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=959780399)
 
-> Argonians (in their native tongue of Jel they call themselves the Saxhleel, or People of the Root) are the reptilian natives of Black Marsh, a vast swampland province in southeastern Tamriel.
+> 아르고니안(그들의 모국어 젤에서는 스스로를 색슬리엘, 혹은 뿌리의 민족이라 부름)은 타므리엘 남동부의 거대한 늪지대 블랙 마쉬에 사는 파충류 원주민입니다.
 
 ***
 
@@ -57,7 +57,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=1180114594)
 
-> The Callistan Dominion was once a strongly unified militaristic species that spanned and subjugated several star Systems.
+> 칼리스탄 도미니온은 한때 여러 성계를 지배하고 복속시킨 강력한 군국주의 종족이었습니다.
 
 
 
@@ -70,7 +70,7 @@
 
 * Ludeon / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=972897322)
 
-> Unique hyper-evolved xenohumans
+> 독특하게 고도로 진화한 이계 인간.
 
 ***
 
@@ -81,7 +81,7 @@
 
 * [Ludeon](https://ludeon.com/forums/index.php?topic=37908.135) / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=1338611415)
 
-> Crystals and their lockdown ability, from Faster Than Light. Their crystals heart only beats for you.
+> FTL에서 가져온 크리스탈과 그들의 봉쇄 능력. 그들의 수정 심장은 오직 당신만을 위해 뜁니다.
 
 ***
 
@@ -92,7 +92,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=882126182)
 
-> The Elder Things, escaping the Shoggoth rebellion, took to sailing through space to escape their own creations. Now they populate the rim.
+> 엘더 씽들은 쇼고스의 반란을 피해 우주로 도망쳐 자신들의 창조물로부터 벗어났습니다. 이제 그들은 변방에 서식합니다.
 
 ***
 ## Forsakens
@@ -103,7 +103,7 @@
 
 * Ludeon / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=1215253121) 
 
-> A mysterious and ancient race with a certain style.
+> 독특한 풍모를 가진 신비롭고 고대의 종족.
 
 ***
 
@@ -114,7 +114,7 @@
 
 * [Ludeon](https://ludeon.com/forums/index.php?topic=37908.0) / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=1543164737)
 
-> Prone to aggression, their biological composition somehow drains oxygen from the rooms they occupy, making them potentially deadly adversaries.
+> 공격 성향이 강하며, 그들의 생물학적 구조는 머무는 방의 산소를 흡수해 치명적인 적이 될 수 있습니다.
 
 ***
 
@@ -125,7 +125,7 @@
 
 * [Ludeon](https://ludeon.com/forums/index.php?topic=37908.135)/ [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=1240656304)
 
-> Faster Than Light meets RimWorld! Engis, Mantis, Rockmen, Slugs, Zoltans.
+> FTL과 림월드의 만남! 엔지, 맨티스, 록맨, 슬러그, 졸탄이 등장합니다.
 
 ***
 
@@ -136,7 +136,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=1294507772)
 
-> The mantodean are sentient beings that scientists classify within the insectoid family, closely related to Megaspiders.
+> 만토디안은 지각 있는 존재로, 과학자들은 이들을 곤충류로 분류하며 메가스파이더와 밀접한 관련이 있습니다.
 
 ***
 
@@ -148,7 +148,7 @@
 
 * Ludeon / [Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=1180673498)
 
-> Powerful space cats. 
+> 강력한 우주 고양이.
 
 ***
 
@@ -159,7 +159,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=940371232)
 
-> The Racc are a raccoon humanoid species obsessed with intelligence and espionage.
+> 랙은 지성과 첩보에 집착하는 라쿤 인간형 종족입니다.
 
 ***
 
@@ -170,7 +170,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=1325209801) 
 
-> You've let those cute and cuddly Squishables into your home and they bring such joy into your life... if only you can share that joy with denizens of a rimworld. Well, with this mod you can!
+> 당신은 귀엽고 포근한 스퀴셔블들을 집에 들였고, 그들은 삶에 큰 기쁨을 가져다 줍니다... 만약 그 기쁨을 림월드 주민과 나눌 수 있다면요. 이 모드라면 가능합니다!
 
 ***
 
@@ -181,7 +181,7 @@
 
 * Ludeon / [Steam](http://steamcommunity.com/sharedfiles/filedetails/?id=947861311)
 
-> The Fenii and Frijjid are Vulpine races nased on Fennec (Vulpes/Fennecus Zerpa) and arctic (Vulpes Lagopus) foxes respectively.
+> 페니이와 프리지드는 각각 페넥여우(Vulpes/Fennecus Zerpa)와 북극여우(Vulpes Lagopus)를 기반으로 한 여우 종족입니다.
 
 ***
 
@@ -223,7 +223,7 @@
 
 * [Ludeon](https://ludeon.com/forums/index.php?topic=55217.0) / [GitHub](https://github.com/PrincessOfEvil/SPADE)
 
-> Adds SPADEs: small automated tanks that can be enhanced with various parts to serve different roles.
+> SPADE 추가: 다양한 부품을 장착해 여러 역할을 수행할 수 있는 소형 자동화 전차.
 
 
 ***
