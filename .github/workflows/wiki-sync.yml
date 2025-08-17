@@ -2,10 +2,10 @@ name: repo-to-wiki-sync
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master ]     # 메인 리포에 커밋되면 실행
   schedule:
-    - cron: "*/30 * * * *"
-  workflow_dispatch: {}
+    - cron: "*/30 * * * *"         # 30분마다(UTC) 실행
+  workflow_dispatch: {}             # 수동 실행도 가능
 
 concurrency:
   group: repo-to-wiki-sync
@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          persist-credentials: false   # ✅ GITHUB_TOKEN 주입 방지 (중요)
+          persist-credentials: false   # 기본 GITHUB_TOKEN 주입 방지(중요)
 
       - name: choose source dir (wiki > docs > root)
         id: srcdir
@@ -36,14 +36,21 @@ jobs:
           else
             echo "dir=." >> "$GITHUB_OUTPUT"
           fi
+          echo "Using: $(cat $GITHUB_OUTPUT)"
 
-      - name: clone target wiki
+      - name: clone target wiki (with PAT)
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # ✅ Fine-grained PAT (Contents: Read/Write)
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # Fine-grained PAT: Contents Read/Write (대상 위키 리포 권한 포함)
         run: |
           TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           echo "Cloning target: $TGT_URL"
           git clone "$TGT_URL" target.wiki
+          cd target.wiki
+          # 항상 원격 최신으로 맞춤(비동기 갱신 대비)
+          git fetch origin master || true
+          git checkout -B master || git checkout master
+          git reset --hard origin/master || true
+          cd ..
 
       - name: build rsync rules (copy everything except obvious VCS/build dirs)
         run: |
@@ -60,12 +67,12 @@ jobs:
             "- *" > rsync.rules
           cat rsync.rules
 
-      - name: prepare a temp source copy
+      - name: prepare temp source copy
         run: |
           rm -rf _src && mkdir _src
           rsync -av --prune-empty-dirs --filter="merge rsync.rules" "${{ steps.srcdir.outputs.dir }}/" _src/
 
-      - name: sanitize filenames (':' -> '-') in source
+      - name: sanitize filenames in source (':' -> '-')
         run: |
           find _src -depth -name '*:*' | while read -r f; do
             safe="$(echo "$f" | sed 's/:/-/g')"
@@ -76,26 +83,19 @@ jobs:
             fi
           done
 
-      - name: sync to wiki (full, with delete)
+      - name: sync to wiki worktree
         run: |
           rsync -av --delete --prune-empty-dirs _src/ target.wiki/
 
-      - name: show remote before push
-        run: |
-          cd target.wiki
-          git remote -v
-          git status --porcelain || true
-
-      - name: ensure PAT is used for wiki remote
+      - name: ensure PAT remote and show status
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd target.wiki
-          # ✅ 혹시 남아있을 수 있는 github-actions extraheader 제거
           git config --global --unset-all http.https://github.com/.extraheader || true
-          # ✅ 원격을 PAT 포함 URL로 재설정
           git remote set-url origin "https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           git remote -v
+          git status --porcelain || true
 
       - name: commit if changes
         id: commit
@@ -109,8 +109,7 @@ jobs:
             echo "committed=no" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: push wiki
+      - name: push wiki with retry on non-ff
         if: steps.commit.outputs.committed == 'yes'
-        run: |
-          cd target.wiki
-          git push origin master   # wiki 기본 브랜치
+        env:
+          GH_TOKEN:_
