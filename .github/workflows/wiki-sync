@@ -1,0 +1,84 @@
+name: Wiki Full Sync (rimworld-dev-korea → rimworld-dev-korea.wiki)
+
+on:
+  workflow_dispatch: {}   # Actions 탭에서 수동 실행
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git 사용자 설정
+        run: |
+          git config --global user.name  "wiki-bot"
+          git config --global user.email "bot@example.com"
+
+      - name: 소스 위키 클론 (solaris0115/rimworld-dev-korea.wiki.git)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # 리포 시크릿: Fine-grained PAT (Contents: Read/Write)
+        run: |
+          SRC_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
+          echo "Cloning source: ${SRC_URL}"
+          git clone "${SRC_URL}" source.wiki
+
+      - name: 타겟 위키 클론 (solaris0115/rimworld-dev-korea.wiki.git)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
+          echo "Cloning target: ${TGT_URL}"
+          git clone "${TGT_URL}" target.wiki
+
+      - name: rsync 규칙 파일 생성
+        run: |
+          cat > rsync.rules <<'RULES'
++ */
++ *.md
++ _Sidebar.md
++ _Footer.md
++ _*.*
++ _images/***
+- *
+RULES
+          echo "=== rsync rules ==="
+          cat rsync.rules
+
+      - name: rsync 동기화 실행 (완전 동기화: --delete)
+        run: |
+          # 파일명에 ':' 같은 문자가 있으면 '-'로 치환
+          find source.wiki -depth -name '*:*' | while read f; do
+            safe_name=$(echo "$f" | sed 's/:/-/g')
+            if [ "$f" != "$safe_name" ]; then
+              echo "Renaming $f -> $safe_name"
+              mv "$f" "$safe_name"
+            fi
+          done
+
+          rsync -av --delete --prune-empty-dirs --filter="merge rsync.rules" \
+            source.wiki/ target.wiki/
+
+      - name: 변경점 확인
+        run: |
+          cd target.wiki
+          echo "=== Changes (status) ==="
+          git status --porcelain || true
+          echo "=== Diff sample (first 200 lines) ==="
+          git diff | head -n 200 || true
+
+      - name: 변경 있으면 커밋
+        id: commit
+        run: |
+          cd target.wiki
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "chore(wiki): full sync from solaris0115/rimworld-dev-korea.wiki"
+            echo "committed=yes" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to commit."
+            echo "committed=no" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 푸시
+        if: steps.commit.outputs.committed == 'yes'
+        run: |
+          cd target.wiki
+          git push origin master    # 타겟 위키 브랜치: master
