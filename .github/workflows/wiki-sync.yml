@@ -135,11 +135,21 @@ jobs:
             echo "committed=no" >> "$GITHUB_OUTPUT"
           fi
 
-      # 푸시
-      - name: push wiki
+      # 견고한 푸시: non-ff면 fetch/rebase 재시도, 그래도 안 되면 --force-with-lease
+      - name: push wiki (robust)
         if: steps.prepull.outputs.committed == 'yes'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd target.wiki
-          git push origin master
+          set -e
+          for i in 1 2 3; do
+            if git push origin master; then
+              exit 0
+            fi
+            echo "Non-fast-forward detected. Retry $i: fetch & rebase..."
+            git fetch origin master || true
+            git rebase origin/master || git reset --hard origin/master
+          done
+          echo "Final attempt with --force-with-lease"
+          git push --force-with-lease origin master
