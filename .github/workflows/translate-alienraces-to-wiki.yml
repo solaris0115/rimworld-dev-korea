@@ -1,0 +1,38 @@
+name: translate-alienraces-to-wiki
+
+on:
+  workflow_dispatch: {}             # 필요시 수동 실행
+  # schedule:
+  #   - cron: "0 0 * * *"          # 원하면 매일 자동 실행 (주석 해제)
+
+concurrency:
+  group: translate-alienraces
+  cancel-in-progress: true
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    env:
+      SRC_WIKI_URL: https://github.com/erdelf/AlienRaces.wiki.git
+      TGT_WIKI_URL: https://github.com/solaris0115/rimworld-dev-korea.wiki.git
+      CHUNK_SIZE: "3500"            # 번역 조각 크기(문자)
+      MAX_RETRY: "5"                # API 재시도 횟수
+      SLEEP_BASE: "2"               # 백오프(초)
+      OPENAI_MODEL: gpt-4o-mini     # ✅ 미니 모델 고정
+    steps:
+      - name: Configure Git
+        run: |
+          git config --global user.name  "wiki-bot"
+          git config --global user.email "bot@example.com"
+
+      - name: Clone source wiki (AlienRaces)
+        run: |
+          git clone "${SRC_WIKI_URL}" src.wiki
+
+      - name: Clone target wiki (rimworld-dev-korea.wiki)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git clone "https://${GH_TOKEN}@${TGT_WIKI_URL#https://}" .wiki
+          cd .wiki
+          git fetch origin master || t
