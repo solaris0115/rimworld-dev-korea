@@ -2,10 +2,10 @@ name: repo-to-wiki-sync
 
 on:
   push:
-    branches: [ main, master ]   # 메인 리포에 커밋 생기면 실행
+    branches: [ main, master ]
   schedule:
-    - cron: "*/30 * * * *"       # 30분마다(UTC) 실행
-  workflow_dispatch: {}           # 수동 실행도 가능
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
 
 concurrency:
   group: repo-to-wiki-sync
@@ -20,10 +20,11 @@ jobs:
           git config --global user.name "wiki-bot"
           git config --global user.email "bot@example.com"
 
-      - name: checkout main repo (source)
+      - name: checkout main repo (source) without credentials
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          persist-credentials: false   # ✅ GITHUB_TOKEN 주입 방지 (중요)
 
       - name: choose source dir (wiki > docs > root)
         id: srcdir
@@ -35,11 +36,10 @@ jobs:
           else
             echo "dir=." >> "$GITHUB_OUTPUT"
           fi
-          echo "Using source dir: $(cat $GITHUB_OUTPUT)"
 
       - name: clone target wiki
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # Fine-grained PAT (Contents: Read/Write)
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # ✅ Fine-grained PAT (Contents: Read/Write)
         run: |
           TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           echo "Cloning target: $TGT_URL"
@@ -80,6 +80,23 @@ jobs:
         run: |
           rsync -av --delete --prune-empty-dirs _src/ target.wiki/
 
+      - name: show remote before push
+        run: |
+          cd target.wiki
+          git remote -v
+          git status --porcelain || true
+
+      - name: ensure PAT is used for wiki remote
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          cd target.wiki
+          # ✅ 혹시 남아있을 수 있는 github-actions extraheader 제거
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          # ✅ 원격을 PAT 포함 URL로 재설정
+          git remote set-url origin "https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
+          git remote -v
+
       - name: commit if changes
         id: commit
         run: |
@@ -96,4 +113,4 @@ jobs:
         if: steps.commit.outputs.committed == 'yes'
         run: |
           cd target.wiki
-          git push origin master   # 위키 기본 브랜치
+          git push origin master   # wiki 기본 브랜치
