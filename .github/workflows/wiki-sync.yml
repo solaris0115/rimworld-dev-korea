@@ -1,7 +1,15 @@
 name: wiki-full-sync
 
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [ main, master ]   # 메인 리포에 커밋 발생 시 자동 실행
+  schedule:
+    - cron: "*/30 * * * *"       # 30분마다 실행(UTC 기준)
+  workflow_dispatch: {}           # 필요시 수동 실행도 가능
+
+concurrency:
+  group: wiki-full-sync
+  cancel-in-progress: true
 
 jobs:
   sync:
@@ -14,7 +22,7 @@ jobs:
 
       - name: clone source wiki
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Fine-grained PAT(Contents: Read/Write)
         run: |
           SRC_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           echo "Cloning source: $SRC_URL"
@@ -38,18 +46,17 @@ jobs:
             "+ _*.*" \
             "+ _images/***" \
             "- *" > rsync.rules
-          echo "=== rsync rules ==="
           cat rsync.rules
 
       - name: sanitize filenames in source (colon -> dash)
         run: |
-          # rename any file/dir that contains ':' to use '-'
+          # ':' 포함 파일/폴더명을 '-'로 치환
           find source.wiki -depth -name '*:*' | while read -r f; do
-            safe_name="$(echo "$f" | sed 's/:/-/g')"
-            if [ "$f" != "$safe_name" ]; then
-              echo "Renaming: $f -> $safe_name"
-              mkdir -p "$(dirname "$safe_name")"
-              mv "$f" "$safe_name"
+            safe="$(echo "$f" | sed 's/:/-/g')"
+            if [ "$f" != "$safe" ]; then
+              echo "Renaming: $f -> $safe"
+              mkdir -p "$(dirname "$safe")"
+              mv "$f" "$safe"
             fi
           done
 
@@ -74,4 +81,4 @@ jobs:
         if: steps.commit.outputs.committed == 'yes'
         run: |
           cd target.wiki
-          git push origin master
+          git push origin master   # 위키 기본 브랜치
