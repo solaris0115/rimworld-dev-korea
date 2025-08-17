@@ -2,10 +2,10 @@ name: repo-to-wiki-sync
 
 on:
   push:
-    branches: [ main, master ]     # 메인 리포에 커밋되면 실행
+    branches: [ main, master ]   # 메인 리포에 커밋되면 자동 실행
   schedule:
-    - cron: "*/30 * * * *"         # 30분마다(UTC) 실행
-  workflow_dispatch: {}             # 수동 실행도 가능
+    - cron: "*/30 * * * *"       # 30분마다(UTC) 실행
+  workflow_dispatch: {}           # 수동 실행도 가능
 
 concurrency:
   group: repo-to-wiki-sync
@@ -20,13 +20,15 @@ jobs:
           git config --global user.name "wiki-bot"
           git config --global user.email "bot@example.com"
 
+      # 메인 리포 체크아웃 (GITHUB_TOKEN 자격증명 주입 차단)
       - name: checkout main repo (source) without credentials
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          persist-credentials: false   # 기본 GITHUB_TOKEN 주입 방지(중요)
+          persist-credentials: false
 
-      - name: choose source dir (wiki > docs > root)
+      # 소스 디렉터리 선택: wiki > docs > 루트
+      - name: choose source dir
         id: srcdir
         run: |
           if [ -d "wiki" ]; then
@@ -36,23 +38,23 @@ jobs:
           else
             echo "dir=." >> "$GITHUB_OUTPUT"
           fi
-          echo "Using: $(cat $GITHUB_OUTPUT)"
 
-      - name: clone target wiki (with PAT)
+      # 타겟 위키 클론 (PAT 사용)
+      - name: clone target wiki
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # Fine-grained PAT: Contents Read/Write (대상 위키 리포 권한 포함)
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           echo "Cloning target: $TGT_URL"
           git clone "$TGT_URL" target.wiki
           cd target.wiki
-          # 항상 원격 최신으로 맞춤(비동기 갱신 대비)
+          # 항상 최신에서 작업 시작
           git fetch origin master || true
           git checkout -B master || git checkout master
           git reset --hard origin/master || true
-          cd ..
 
-      - name: build rsync rules (copy everything except obvious VCS/build dirs)
+      # rsync 규칙: 거의 전부 복제 (.git/빌드 아티팩트 제외)
+      - name: build rsync rules
         run: |
           printf "%s\n" \
             "- .git/***" \
@@ -67,11 +69,13 @@ jobs:
             "- *" > rsync.rules
           cat rsync.rules
 
+      # 소스 임시 복사본 준비
       - name: prepare temp source copy
         run: |
           rm -rf _src && mkdir _src
           rsync -av --prune-empty-dirs --filter="merge rsync.rules" "${{ steps.srcdir.outputs.dir }}/" _src/
 
+      # 파일/폴더명에 ':' 있으면 '-'로 치환
       - name: sanitize filenames in source (':' -> '-')
         run: |
           find _src -depth -name '*:*' | while read -r f; do
@@ -83,10 +87,12 @@ jobs:
             fi
           done
 
+      # 위키 워크트리에 전체 동기화 (삭제 포함)
       - name: sync to wiki worktree
         run: |
           rsync -av --delete --prune-empty-dirs _src/ target.wiki/
 
+      # 원격에 PAT 사용 보장 및 상태 출력
       - name: ensure PAT remote and show status
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -95,21 +101,4 @@ jobs:
           git config --global --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin "https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           git remote -v
-          git status --porcelain || true
-
-      - name: commit if changes
-        id: commit
-        run: |
-          cd target.wiki
-          if [ -n "$(git status --porcelain)" ]; then
-            git add .
-            git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-            echo "committed=yes" >> "$GITHUB_OUTPUT"
-          else
-            echo "committed=no" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: push wiki with retry on non-ff
-        if: steps.commit.outputs.committed == 'yes'
-        env:
-          GH_TOKEN:_
+          git sta
