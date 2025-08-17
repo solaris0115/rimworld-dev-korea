@@ -32,12 +32,16 @@ jobs:
       - name: Clone target wiki (rimworld-dev-korea.wiki)
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TGT_WIKI_URL: ${{ env.TGT_WIKI_URL }}
         run: |
-          git clone "https://${GH_TOKEN}@${TGT_WIKI_URL#https://}" .wiki
+          # bash에서 프로토콜 제거
+          TGT_NO_PROTO="${TGT_WIKI_URL#https://}"
+          git clone "https://${GH_TOKEN}@${TGT_NO_PROTO}" .wiki
           cd .wiki
           git fetch origin master || true
           git checkout -B master || git checkout master
           git reset --hard origin/master || true
+
 
       - name: Translate EN -> KO with OpenAI (chunked, retry, resume)
         env:
@@ -227,11 +231,14 @@ jobs:
         if: steps.commit.outputs.committed == 'yes'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TGT_WIKI_URL: ${{ env.TGT_WIKI_URL }}
         run: |
           set -e
           cd .wiki
           git config --global --unset-all http.https://github.com/.extraheader || true
-          git remote set-url origin "https://${GH_TOKEN}@${{ env.TGT_WIKI_URL#https:// }}"
+          TGT_NO_PROTO="${TGT_WIKI_URL#https://}"
+          git remote set-url origin "https://${GH_TOKEN}@${TGT_NO_PROTO}"
+
           attempt() {
             git push origin master && return 0
             echo "Non-ff; refetch & hard reset & retry..."
