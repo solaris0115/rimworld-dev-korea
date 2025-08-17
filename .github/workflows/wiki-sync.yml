@@ -8,31 +8,70 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: git config
-        run: git config --global user.name "wiki-bot"; git config --global user.email "bot@example.com"
+        run: |
+          git config --global user.name "wiki-bot"
+          git config --global user.email "bot@example.com"
 
       - name: clone source wiki
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: SRC_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"; echo "Cloning source: $SRC_URL"; git clone "$SRC_URL" source.wiki
+        run: |
+          SRC_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
+          echo "Cloning source: $SRC_URL"
+          git clone "$SRC_URL" source.wiki
 
       - name: clone target wiki
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"; echo "Cloning target: $TGT_URL"; git clone "$TGT_URL" target.wiki
+        run: |
+          TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
+          echo "Cloning target: $TGT_URL"
+          git clone "$TGT_URL" target.wiki
 
       - name: build rsync rules
-        run: printf "%s\n" "+ */" "+ *.md" "+ _Sidebar.md" "+ _Footer.md" "+ _*.*" "+ _images/***" "- *" > rsync.rules; echo "=== rsync rules ==="; cat rsync.rules
+        run: |
+          printf "%s\n" \
+            "+ */" \
+            "+ *.md" \
+            "+ _Sidebar.md" \
+            "+ _Footer.md" \
+            "+ _*.*" \
+            "+ _images/***" \
+            "- *" > rsync.rules
+          echo "=== rsync rules ==="
+          cat rsync.rules
 
-      - name: sanitize filenames in source (colon to dash)
-        run: find source.wiki -depth -name '*:*' -exec bash -lc 'f="$1"; safe="${f//:/-}"; if [ "$f" != "$safe" ]; then mkdir -p "$(dirname "$safe")"; mv "$f" "$safe"; fi' _ {} \;
+      - name: sanitize filenames in source (colon -> dash)
+        run: |
+          # rename any file/dir that contains ':' to use '-'
+          find source.wiki -depth -name '*:*' | while read -r f; do
+            safe_name="$(echo "$f" | sed 's/:/-/g')"
+            if [ "$f" != "$safe_name" ]; then
+              echo "Renaming: $f -> $safe_name"
+              mkdir -p "$(dirname "$safe_name")"
+              mv "$f" "$safe_name"
+            fi
+          done
 
       - name: rsync full sync (with delete)
-        run: rsync -av --delete --prune-empty-dirs --filter="merge rsync.rules" source.wiki/ target.wiki/
+        run: |
+          rsync -av --delete --prune-empty-dirs --filter="merge rsync.rules" \
+            source.wiki/ target.wiki/
 
       - name: commit if changes
         id: commit
-        run: cd target.wiki; if [ -n "$(git status --porcelain)" ]; then git add .; git commit -m "chore(wiki): full sync from solaris0115/rimworld-dev-korea.wiki"; echo "committed=yes" >> "$GITHUB_OUTPUT"; else echo "committed=no" >> "$GITHUB_OUTPUT"; fi
+        run: |
+          cd target.wiki
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "chore(wiki): full sync from solaris0115/rimworld-dev-korea.wiki"
+            echo "committed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "committed=no" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: push
         if: steps.commit.outputs.committed == 'yes'
-        run: cd target.wiki; git push origin master
+        run: |
+          cd target.wiki
+          git push origin master
