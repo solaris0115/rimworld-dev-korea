@@ -8,11 +8,11 @@ jobs:
       - name: Configure Git
         run: |
           git config --global user.name  "wiki-bot"
-          git config --global user.email "bot@example.com"
+          git config --global user.email "bot@bot.com"
 
       - name: Clone Target Wiki
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GPT_TOKEN }}
         run: |
           git clone https://${GH_TOKEN}@github.com/solaris0115/Mod-Guide-with-AI.wiki.git target.wiki
 
