@@ -35,4 +35,210 @@ jobs:
         run: |
           git clone "https://${GH_TOKEN}@${TGT_WIKI_URL#https://}" .wiki
           cd .wiki
-          git fetch origin master || t
+          git fetch origin master || true
+          git checkout -B master || git checkout master
+          git reset --hard origin/master || true
+
+      - name: Translate EN -> KO with OpenAI (chunked, retry, resume)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ env.OPENAI_MODEL }}
+          CHUNK_SIZE: ${{ env.CHUNK_SIZE }}
+          MAX_RETRY: ${{ env.MAX_RETRY }}
+          SLEEP_BASE: ${{ env.SLEEP_BASE }}
+        run: |
+          python3 - <<'PY'
+          import os, re, json, time, pathlib, shutil, sys
+          import requests
+
+          SRC = pathlib.Path("src.wiki")
+          TGT = pathlib.Path(".wiki")
+          PROG = pathlib.Path(".progress_openai.json")
+
+          ENDPOINT = "https://api.openai.com/v1/chat/completions"
+          MODEL = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+          CHUNK = int(os.getenv("CHUNK_SIZE","3500"))
+          MAX_RETRY = int(os.getenv("MAX_RETRY","5"))
+          SLEEP_BASE = int(os.getenv("SLEEP_BASE","2"))
+          HEADERS = {
+              "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
+              "Content-Type": "application/json"
+          }
+
+          # ----- helpers -----
+          def is_md(p: pathlib.Path)->bool:
+              if p.suffix.lower()==".md": return True
+              return p.name in ("_Sidebar.md","_Footer.md","_Header.md","Home.md")
+
+          def is_image(p: pathlib.Path)->bool:
+              return p.suffix.lower() in (".png",".jpg",".jpeg",".gif",".svg",".webp",".bmp",".ico")
+
+          def sanitize_name(s:str)->str:
+              return s.replace(":", "-")  # Windows-unsafe → 안전화
+
+          TOKEN_PREFIX = "§§"
+          def stash(pattern, text, label, bank, flags=re.DOTALL):
+              def repl(m):
+                  tok = f"{TOKEN_PREFIX}{label}{len(bank)}§§"
+                  bank.append(m.group(0))
+                  return tok
+              return re.sub(pattern, repl, text, flags=flags)
+
+          def protect(text:str):
+              banks={}
+              # fenced code
+              banks["C"]=[]; text = stash(r"```.*?```", text, "C", banks["C"])
+              # inline code
+              banks["I"]=[]; text = stash(r"`[^`\n]+`", text, "I", banks["I"])
+              # images
+              banks["M"]=[]; text = stash(r"!\[[^\]]*\]\([^)]+\)", text, "M", banks["M"])
+              # wiki links [[...]]
+              banks["W"]=[]; text = stash(r"\[\[[^\]]+\]\]", text, "W", banks["W"])
+              # raw URLs
+              banks["U1"]=[]; text = stash(r"https?://[^\s)>\]]+", text, "U1", banks["U1"])
+              # md link URLs only
+              banks["U2"]=[]
+              def repl_link(m):
+                  txt, url = m.group(1), m.group(2)
+                  tok = f"{TOKEN_PREFIX}U2{len(banks['U2'])}§§"
+                  banks["U2"].append(url)
+                  return f"[{txt}]({tok})"
+              text = re.sub(r"\[([^\]]+)\]\((https?[^)]+)\)", repl_link, text)
+              return text, banks
+
+          def unstash(serial, bank, label):
+              i=0
+              while True:
+                  tok = f"{TOKEN_PREFIX}{label}{i}§§"
+                  if tok not in serial: break
+                  serial = serial.replace(tok, bank[i]); i+=1
+              return serial
+
+          def unprotect(text:str, banks):
+              text = unstash(text, banks["C"], "C")
+              text = unstash(text, banks["I"], "I")
+              text = unstash(text, banks["M"], "M")
+              text = unstash(text, banks["W"], "W")
+              i=0
+              while True:
+                  tok=f"{TOKEN_PREFIX}U2{i}§§"
+                  if tok not in text: break
+                  text=text.replace(tok, banks["U2"][i]); i+=1
+              text = unstash(text, banks["U1"], "U1")
+              return text
+
+          SYS_PROMPT = (
+              "You are a professional technical translator. "
+              "The text is from the AlienRaces wiki for the RimWorld mod 'Humanoid Alien Races' by Erdelf. "
+              "Translate the user's Markdown content from English to Korean. "
+              "Preserve Markdown structure. Keep placeholder tokens like '§§Xn§§' intact. "
+              "Do not translate code, URLs, images, or wiki links already protected by tokens. "
+              "Use concise but accurate Korean suitable for technical wiki, "
+              "and keep RimWorld modding/game-specific terms consistent."
+          )
+
+
+          def call_openai(s:str)->str:
+              payload = {
+                  "model": MODEL,
+                  "messages": [
+                      {"role": "system", "content": SYS_PROMPT},
+                      {"role": "user", "content": s}
+                  ],
+                  "temperature": 0.1
+              }
+              last = None
+              for attempt in range(MAX_RETRY):
+                  try:
+                      r = requests.post(ENDPOINT, headers=HEADERS, data=json.dumps(payload), timeout=120)
+                      if r.status_code == 200:
+                          return r.json()["choices"][0]["message"]["content"]
+                      last = (r.status_code, r.text)
+                      time.sleep(SLEEP_BASE*(2**attempt))
+                  except Exception as e:
+                      last = (type(e).__name__, str(e))
+                      time.sleep(SLEEP_BASE*(2**attempt))
+              print("OpenAI API error:", last, file=sys.stderr)
+              raise SystemExit(1)
+
+          # 진행상태 로드
+          progress = {"done":[]}
+          if PROG.exists():
+              try: progress = json.loads(PROG.read_text(encoding="utf-8"))
+              except: pass
+
+          translated, copied, skipped = [], [], []
+
+          for p in SRC.rglob("*"):
+              if p.is_dir(): continue
+              rel = p.relative_to(SRC)
+              relkey = str(rel).replace("\\","/")
+              if relkey in progress["done"]:
+                  continue
+
+              parts = [sanitize_name(x) for x in rel.parts]
+              tgt = TGT.joinpath(*parts)
+
+              if is_md(p):
+                  text = p.read_text(encoding="utf-8", errors="ignore")
+                  prot, banks = protect(text)
+                  chunks = [prot[i:i+CHUNK] for i in range(0, len(prot), CHUNK)] or [prot]
+                  out=[]
+                  for ch in chunks:
+                      out.append(call_openai(ch))
+                      time.sleep(0.2)
+                  ko = "".join(out)
+                  ko = unprotect(ko, banks)
+                  tgt.parent.mkdir(parents=True, exist_ok=True)
+                  tgt.write_text(ko, encoding="utf-8")
+                  translated.append(relkey)
+
+              elif is_image(p) or str(rel).startswith("_images/"):
+                  tgt.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(str(p), str(tgt))
+                  copied.append(relkey)
+
+              else:
+                  skipped.append(relkey)
+
+              progress.setdefault("done", []).append(relkey)
+              PROG.write_text(json.dumps(progress, ensure_ascii=False, indent=2), encoding="utf-8")
+
+          print("Translated:", len(translated))
+          print("Images copied:", len(copied))
+          print("Skipped:", len(skipped))
+          if skipped:
+              print("Skipped list (first 50):", skipped[:50])
+          PY
+
+      - name: Commit (if changes)
+        id: commit
+        run: |
+          cd .wiki
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "docs(wiki): AlienRaces.wiki translated to Korean (GPT-4o-mini)"
+            echo "committed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "committed=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push with non-ff recovery (no rebase)
+        if: steps.commit.outputs.committed == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -e
+          cd .wiki
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          git remote set-url origin "https://${GH_TOKEN}@${{ env.TGT_WIKI_URL#https:// }}"
+          attempt() {
+            git push origin master && return 0
+            echo "Non-ff; refetch & hard reset & retry..."
+            git fetch origin master || true
+            git reset --hard origin/master
+            git add .
+            git commit -m "docs(wiki): rebuild after remote update (GPT-4o-mini)"
+            git push origin master
+          }
+          attempt || attempt
