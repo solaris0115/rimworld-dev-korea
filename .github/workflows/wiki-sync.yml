@@ -2,10 +2,10 @@ name: repo-to-wiki-sync
 
 on:
   push:
-    branches: [ main, master ]     # 메인 리포에 커밋되면 자동 실행
+    branches: [ main, master ]
   schedule:
-    - cron: "*/30 * * * *"         # 30분마다(UTC) 실행
-  workflow_dispatch: {}             # 필요시 수동 실행
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
 
 concurrency:
   group: repo-to-wiki-sync
@@ -20,15 +20,13 @@ jobs:
           git config --global user.name "wiki-bot"
           git config --global user.email "bot@example.com"
 
-      # 메인 리포 체크아웃 (GITHUB_TOKEN 자격증명 주입 비활성화)
       - name: checkout main repo (source) without credentials
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      # 소스 디렉토리 선택: wiki > docs > 루트
-      - name: choose source dir
+      - name: choose source dir (wiki > docs > root)
         id: srcdir
         run: |
           if [ -d "wiki" ]; then
@@ -39,10 +37,9 @@ jobs:
             echo "dir=." >> "$GITHUB_OUTPUT"
           fi
 
-      # 타겟 위키 클론 (PAT 사용, 항상 최신으로 맞춰 시작)
-      - name: clone target wiki
+      - name: clone target wiki (PAT) and hard reset to latest
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}   # Fine-grained PAT (Contents: Read/Write)
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TGT_URL="https://${GH_TOKEN}@github.com/solaris0115/rimworld-dev-korea.wiki.git"
           echo "Cloning target: $TGT_URL"
@@ -52,8 +49,7 @@ jobs:
           git checkout -B master || git checkout master
           git reset --hard origin/master || true
 
-      # rsync 규칙: 거의 전부 복제 (.git/빌드 아티팩트 제외)
-      - name: build rsync rules
+      - name: build rsync rules (copy everything except obvious VCS/build dirs)
         run: |
           printf "%s\n" \
             "- .git/***" \
@@ -68,14 +64,12 @@ jobs:
             "- *" > rsync.rules
           cat rsync.rules
 
-      # 소스 임시 복사본 준비
-      - name: prepare temp source copy
+      - name: snapshot source to _src
         run: |
           rm -rf _src && mkdir _src
           rsync -av --prune-empty-dirs --filter="merge rsync.rules" "${{ steps.srcdir.outputs.dir }}/" _src/
 
-      # 파일/폴더명에 ':' 있으면 '-'로 치환
-      - name: sanitize filenames in source (':' -> '-')
+      - name: sanitize filenames in _src (':' -> '-')
         run: |
           find _src -depth -name '*:*' | while read -r f; do
             safe="$(echo "$f" | sed 's/:/-/g')"
@@ -86,12 +80,10 @@ jobs:
             fi
           done
 
-      # 위키 워크트리에 전체 동기화 (삭제 포함)
-      - name: sync to wiki worktree
+      - name: initial sync to wiki worktree
         run: |
           rsync -av --delete --prune-empty-dirs _src/ target.wiki/
 
-      # 원격에 PAT 사용 보장 및 상태 출력
       - name: ensure PAT remote and show status
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -102,31 +94,10 @@ jobs:
           git remote -v
           git status --porcelain || true
 
-      # non-ff 대비: push 직전 최신 반영(stash -> rebase/reset -> pop -> commit)
-      - name: pre-pull with stash and commit
-        id: prepull
+      - name: commit if changes
+        id: commit
         run: |
           cd target.wiki
-
-          # 변경이 있으면 임시 보관
-          if [ -n "$(git status --porcelain)" ]; then
-            git stash push -u -m "sync-stash" || true
-            STASHED=yes
-          else
-            STASHED=no
-          fi
-          echo "stashed=$STASHED" >> "$GITHUB_OUTPUT"
-
-          # 원격 최신 반영
-          git fetch origin master || true
-          git rebase origin/master || git reset --hard origin/master
-
-          # 스태시 복원(있으면)
-          if [ "$STASHED" = "yes" ]; then
-            git stash pop || true
-          fi
-
-          # 복원 후 변경 있으면 커밋
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
@@ -135,21 +106,44 @@ jobs:
             echo "committed=no" >> "$GITHUB_OUTPUT"
           fi
 
-      # 견고한 푸시: non-ff면 fetch/rebase 재시도, 그래도 안 되면 --force-with-lease
-      - name: push wiki (robust)
-        if: steps.prepull.outputs.committed == 'yes'
+      - name: push with non-ff recovery loop (no rebase; rebuild commit)
+        if: steps.commit.outputs.committed == 'yes'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cd target.wiki
           set -e
-          for i in 1 2 3; do
+          cd target.wiki
+
+          # push attempt function: on non-ff, refetch+hard-reset, re-apply _src, re-commit, retry
+          attempt_push() {
+            echo "Attempting push..."
             if git push origin master; then
-              exit 0
+              echo "Push OK"
+              return 0
             fi
-            echo "Non-fast-forward detected. Retry $i: fetch & rebase..."
+
+            echo "Non-fast-forward. Recovering by refetching and rebuilding commit..."
             git fetch origin master || true
-            git rebase origin/master || git reset --hard origin/master
-          done
-          echo "Final attempt with --force-with-lease"
-          git push --force-with-lease origin master
+            git reset --hard origin/master
+
+            # re-apply the snapshot to the clean worktree
+            rsync -av --delete --prune-empty-dirs ../_src/ ./
+
+            # if any changes exist after re-apply, re-commit; else nothing to push
+            if [ -n "$(git status --porcelain)" ]; then
+              git add .
+              git commit -m "docs(wiki): sync from main repo ($(date -u +%Y-%m-%dT%H:%M:%SZ)) [rebuilt]"
+            else
+              echo "No diff after rebuild; nothing to push."
+              return 0
+            fi
+
+            # retry the push once after rebuild
+            git push origin master
+          }
+
+          # up to 3 attempts; each attempt fully rebuilds from origin/master + _src
+          attempt_push || attempt_push || attempt_push
+
+          echo "Done."
+
