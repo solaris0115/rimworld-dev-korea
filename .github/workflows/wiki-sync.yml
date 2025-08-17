@@ -40,12 +40,9 @@ jobs:
         run: |
           printf "%s\n" \
             "+ */" \
-            "+ *.md" \
-            "+ _Sidebar.md" \
-            "+ _Footer.md" \
-            "+ _*.*" \
-            "+ _images/***" \
+            "+ *" \
             "- *" > rsync.rules
+            
           cat rsync.rules
 
       - name: sanitize filenames in source (colon -> dash)
